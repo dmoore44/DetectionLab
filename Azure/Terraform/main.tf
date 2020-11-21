@@ -195,6 +195,31 @@ resource "azurerm_network_interface" "logger-nic" {
   }
 }
 
+resource "azurerm_public_ip" "kali-publicip" {
+  name                = "kali-public-ip"
+  location            = var.region
+  resource_group_name = azurerm_resource_group.detectionlab.name
+  allocation_method   = "Static"
+
+  tags = {
+    role = "kali"
+  }
+}
+
+resource "azurerm_network_interface" "kali-nic" {
+  name                = "kali-nic"
+  location            = var.region
+  resource_group_name = azurerm_resource_group.detectionlab.name
+
+  ip_configuration {
+    name                          = "kali-NicConfiguration"
+    subnet_id                     = azurerm_subnet.detectionlab-subnet.id
+    private_ip_address_allocation = "Static"
+    private_ip_address            = "192.168.38.106"
+    public_ip_address_id          = azurerm_public_ip.kali-publicip.id
+  }
+}
+
 # Storage
 resource "random_id" "randomId" {
   keepers = {
@@ -272,7 +297,7 @@ resource "azurerm_virtual_machine" "logger" {
       "echo 'vagrant:vagrant' | sudo chpasswd",
       "sudo mkdir /home/vagrant/.ssh && sudo cp /home/ubuntu/.ssh/authorized_keys /home/vagrant/.ssh/authorized_keys && sudo chown -R vagrant:vagrant /home/vagrant/.ssh",
       "echo 'vagrant    ALL=(ALL:ALL) NOPASSWD:ALL' | sudo tee -a /etc/sudoers",
-      "sudo git clone https://github.com/clong/DetectionLab.git /opt/DetectionLab",
+      "sudo git clone https://github.com/dmoore44/DetectionLab.git /opt/DetectionLab",
       "sudo sed -i 's/eth1/eth0/g' /opt/DetectionLab/Vagrant/logger_bootstrap.sh",
       "sudo sed -i 's/ETH1/ETH0/g' /opt/DetectionLab/Vagrant/logger_bootstrap.sh",
       "sudo sed -i 's#/usr/local/go/bin/go get -u#GOPATH=/root/go /usr/local/go/bin/go get -u#g' /opt/DetectionLab/Vagrant/logger_bootstrap.sh",
@@ -285,6 +310,86 @@ resource "azurerm_virtual_machine" "logger" {
 
   tags = {
     role = "logger"
+  }
+}
+
+# Kali VM
+resource "azurerm_marketplace_agreement" "kali-agreement" {
+   publisher = "kali-linux"
+   offer     = "kali-linux"
+   plan      = "kali"
+ }
+
+resource "azurerm_virtual_machine" "kali" {
+  name = "kali"
+  location = var.region
+  resource_group_name  = azurerm_resource_group.detectionlab.name
+  network_interface_ids = [azurerm_network_interface.kali-nic.id]
+  vm_size               = "Standard_D1_v2"
+
+  delete_os_disk_on_termination = true
+
+  storage_os_disk {
+    name              = "OsDiskKali"
+    caching           = "ReadWrite"
+    create_option     = "FromImage"
+    managed_disk_type = "Standard_LRS"
+  }
+
+  storage_image_reference {
+    publisher = "kali-linux"
+    offer     = "kali-linux"
+    sku       = "kali"
+    version   = "latest"
+  }
+
+  os_profile {
+    computer_name  = "kali"
+    admin_username = "vagrant"
+    admin_password = "vagrant"
+  }
+
+  os_profile_linux_config {
+    disable_password_authentication = true
+    ssh_keys {
+      path     = "/home/vagrant/.ssh/authorized_keys"
+      key_data = file(var.public_key_path)
+    }
+  }
+
+  plan {
+    name      = "kali"
+    publisher = "kali-linux"
+    product   = "kali-linux"
+  }
+
+  boot_diagnostics {
+    enabled     = "true"
+    storage_uri = azurerm_storage_account.detectionlab-storageaccount.primary_blob_endpoint
+  }
+
+  # Provision
+  # https://github.com/terraform-providers/terraform-provider-azurerm/blob/master/examples/virtual-machines/provisioners/linux/main.tf
+  # https://www.terraform.io/docs/provisioners/connection.html
+  provisioner "remote-exec" {
+    connection {
+      host = azurerm_public_ip.kali-publicip.ip_address
+      user     = "vagrant"
+      private_key = file(var.private_key_path)
+    }
+    inline = [
+      "sudo add-apt-repository universe && sudo apt-get -qq update && sudo apt-get -qq install -y git",
+      "sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/g' /etc/ssh/sshd_config && sudo service ssh restart",
+      "echo 'kali' | sudo tee /etc/hostname && sudo hostnamectl set-hostname kali",
+      "sudo adduser --disabled-password --gecos \"\" vagrant && echo 'vagrant:vagrant' | sudo chpasswd",
+      "echo 'vagrant:vagrant' | sudo chpasswd",
+      "echo 'vagrant    ALL=(ALL:ALL) NOPASSWD:ALL' | sudo tee -a /etc/sudoers",
+      "sudo apt-get -qq update",
+    ]
+  }
+
+  tags = {
+    role = "kali"
   }
 }
 
@@ -367,7 +472,7 @@ resource "azurerm_public_ip" "win10-publicip" {
 }
 
 resource "azurerm_virtual_machine" "dc" {
-  name = "dc.windomain.local"
+  name = "dc.pma.corp.pvt"
   location = var.region
   resource_group_name   = azurerm_resource_group.detectionlab.name
   network_interface_ids = [azurerm_network_interface.dc-nic.id]
@@ -423,7 +528,7 @@ resource "azurerm_virtual_machine" "dc" {
 }
 
 resource "azurerm_virtual_machine" "wef" {
-  name = "wef.windomain.local"
+  name = "wef.pma.corp.pvt"
   location = var.region
   resource_group_name  = azurerm_resource_group.detectionlab.name
   network_interface_ids = [azurerm_network_interface.wef-nic.id]
@@ -480,7 +585,7 @@ resource "azurerm_virtual_machine" "wef" {
 }
 
 resource "azurerm_virtual_machine" "win10" {
-  name = "win10.windomain.local"
+  name = "win10.pma.corp.pvt"
   location = var.region
   resource_group_name  = azurerm_resource_group.detectionlab.name
   network_interface_ids = [azurerm_network_interface.win10-nic.id]

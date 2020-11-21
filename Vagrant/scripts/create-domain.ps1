@@ -1,10 +1,10 @@
-# Purpose: Creates the "windomain.local" domain
+# Purpose: Creates the "pma.corp.pvt" domain
 # Source: https://github.com/StefanScherer/adfs2
 param ([String] $ip)
 
 $subnet = $ip -replace "\.\d+$", ""
 
-$domain= "windomain.local"
+$domain= "pma.corp.pvt"
 
 if ((gwmi win32_computersystem).partofdomain -eq $false) {
 
@@ -37,7 +37,7 @@ if ((gwmi win32_computersystem).partofdomain -eq $false) {
     -DatabasePath "C:\Windows\NTDS" `
     -DomainMode "7" `
     -DomainName $domain `
-    -DomainNetbiosName "WINDOMAIN" `
+    -DomainNetbiosName "pma.corp.pvt" `
     -ForestMode "7" `
     -InstallDns:$true `
     -LogPath "C:\Windows\NTDS" `
@@ -45,7 +45,7 @@ if ((gwmi win32_computersystem).partofdomain -eq $false) {
     -SysvolPath "C:\Windows\SYSVOL" `
     -Force:$true
 
-  $newDNSServers = "127.0.0.1", "8.8.8.8", "4.4.4.4"
+  $newDNSServers = "127.0.0.1", "9.9.9.9", "4.4.4.4"
 
   $adapters = Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.IPAddress -And ($_.IPAddress).StartsWith($subnet) }
   if ($adapters) {
